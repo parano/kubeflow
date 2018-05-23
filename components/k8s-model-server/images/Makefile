@@ -58,7 +58,7 @@ push_gpu_gcr: build_gpu_gcr
 	gcloud docker -- push ${GCR_PROJECT}/tf-model-server-gpu:${TF_GPU_VERSION}
 
 push_gpu_dockerhub: build_gpu_dockerhub
-	docker -- push ${DOCKERHUB_PROJECT}/tf-model-server-gpu:${TF_GPU_VERSION}
+	docker push ${DOCKERHUB_PROJECT}/tf-model-server-gpu:${TF_GPU_VERSION}
 
 push_gpu: build_gpu_gcr build_gpu_dockerhub push_gpu_gcr push_gpu_dockerhub
 
