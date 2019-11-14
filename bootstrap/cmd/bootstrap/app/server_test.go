@@ -15,16 +15,12 @@
 package app
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
-	core_v1 "k8s.io/api/core/v1"
 	"k8s.io/api/storage/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sVersion "k8s.io/apimachinery/pkg/version"
-	type_v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
@@ -68,12 +64,14 @@ func TestModifyGcloudCommand(t *testing.T) {
 			t.Errorf("ModifyGcloudCommand returned error; %v", err)
 		}
 		if !reflect.DeepEqual(c.Expected, c.Input) {
-			t.Errorf("ModifyGcloudCommand not correct; got %v; want %v", c.Input, c.Expected)
+			pInput, _ := Pformat(c.Input)
+			pExpected, _ := Pformat(c.Expected)
+			t.Errorf("ModifyGcloudCommand not correct; got %v; want %v", pInput, pExpected)
 		}
 	}
 }
 
-func TestisGke(t *testing.T) {
+func TestIsGke(t *testing.T) {
 	type TestCase struct {
 		Input    k8sVersion.Info
 		Expected bool
@@ -114,8 +112,10 @@ func TestHasDefaultStorageClass(t *testing.T) {
 			Input: v1.StorageClassList{
 				Items: []v1.StorageClass{
 					{
-						Parameters: map[string]string{
-							"storageclass.beta.kubernetes.io/is-default-class": "true",
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"storageclass.beta.kubernetes.io/is-default-class": "true",
+							},
 						},
 					},
 				},
@@ -126,63 +126,22 @@ func TestHasDefaultStorageClass(t *testing.T) {
 			Input: v1.StorageClassList{
 				Items: []v1.StorageClass{
 					{
-						Parameters: map[string]string{
-							"storageclass.beta.kubernetes.io/is-default-class": "false",
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"storageclass.beta.kubernetes.io/is-default-class": "false",
+							},
 						},
 					},
 				},
 			},
-			Expected: true,
+			Expected: false,
 		},
 	}
 	for _, c := range cases {
 		result := hasDefaultStorage(&c.Input)
 		if result != c.Expected {
-			t.Errorf("hasDefaultStorage(%v) not correct; got %v; want %v", c.Input, result, c.Expected)
+			pInput, _ := Pformat(c.Input)
+			t.Errorf("hasDefaultStorage(%v) not correct; got %+v; want %+v", pInput, result, c.Expected)
 		}
 	}
-}
-
-type MockedNamespace struct {
-	mock.Mock
-	type_v1.NamespaceInterface
-}
-
-func (n *MockedNamespace) Get(name string, options meta_v1.GetOptions) (*core_v1.Namespace, error) {
-	if name == "existing" {
-		return &core_v1.Namespace{
-			ObjectMeta: meta_v1.ObjectMeta{
-				Name: "existing",
-			},
-		}, nil
-	}
-	return nil, errors.New("not found")
-}
-
-func (n *MockedNamespace) Create(ns *core_v1.Namespace) (*core_v1.Namespace, error) {
-	n.Called(ns)
-	// no consumer of return value, so return nil
-	return nil, nil
-}
-
-// Make sure setupNamespace will create namespace if and only if the namespace doesn't exist.
-func TestSetupNamespace(t *testing.T) {
-	// create an instance of our test object
-	mockedNamespace := new(MockedNamespace)
-
-	nsIns := &core_v1.Namespace{
-		ObjectMeta: meta_v1.ObjectMeta{
-			Name: "new",
-		},
-	}
-	mockedNamespace.On("Create", nsIns).Return(
-		nsIns, nil)
-
-	// "Create" should be called 0 times when namespace exists already
-	setupNamespace(mockedNamespace, "existing")
-	mockedNamespace.AssertNumberOfCalls(t, "Create", 0)
-
-	// "Create" should be called 1 times when namespace doesn't exist
-	setupNamespace(mockedNamespace, "new")
-	mockedNamespace.AssertNumberOfCalls(t, "Create", 1)
 }

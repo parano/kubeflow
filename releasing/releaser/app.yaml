@@ -1,4 +1,4 @@
-apiVersion: 0.1.0
+apiVersion: 0.3.0
 environments:
   prow:
     destination:
@@ -14,11 +14,11 @@ environments:
     path: releasing
 kind: ksonnet.io/app
 libraries:
-  core:
+  automation:
     gitVersion:
-      commitSha: 5c35580d76092788b089cb447be3f3097cffe60b
+      commitSha: faea44afcef9dc64a672d22f6bb3808e4706ac45
       refSpec: master
-    name: core
+    name: automation
     registry: kubeflow
 name: test-infra
 registries:

@@ -5,7 +5,9 @@
 - [Developer Guide For Ksonnet Packages](#developer-guide-for-ksonnet-packages)
   - [Creating New Ksonnet Components](#creating-new-ksonnet-components)
   - [Testing changes to ksonnet components](#testing-changes-to-ksonnet-components)
+      - [ERROR Component parameters for 'jupyterhub' already exists](#error-component-parameters-for-jupyterhub-already-exists)
     - [New Packages](#new-packages)
+      - [Pull Requests](#pull-requests)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -25,7 +27,7 @@ Here are some instructions for creating new Kubeflow packages.
 			- Optional packages probably don't belong in core
 
 		- Otherwise, if there's an existing package that it belongs with put
-			it in that package 
+			it in that package
 		- If no existing package is a good fit create a new one
 
 1. If you are creating a new package follow these steps
@@ -36,7 +38,7 @@ Here are some instructions for creating new Kubeflow packages.
 		- description
 	- modify registry.yaml adding an entry for the new package
 
-1. Create a libsonnet file see [all.libsonnet](https://github.com/kubeflow/kubeflow/tree/master/kubeflow/new-package-stub/all.libsonnet) to define the prototypes and parts for your component
+1. Create a libsonnet file see [newpackage.libsonnet](https://github.com/kubeflow/kubeflow/tree/master/kubeflow/new-package-stub/newpackage.libsonnet) to define the manifests for your component
 
 	- If you have an existing YAML manifest you can just convert that to json
 	  and use that as a starting point for your parts
@@ -51,17 +53,16 @@ Here are some instructions for creating new Kubeflow packages.
 
 	- Typically you will want to make the following changes
 
-		- Set the namespace for most components
 		- Use params for any variables that should be easily overwritable
 		- For helm packages substitute `params.name` for the name of the release
 
 1. Create one or more prototype files in the prototypes directory for your package
 
-	- Use [tf-prototype.jsonnet](https://github.com/kubeflow/kubeflow/tree/master/kubeflow/new-package-stub/prototypes/tf-prototype.jsonnet) as a template.
-	
+	- Use [newpackage.jsonnet](https://github.com/kubeflow/kubeflow/tree/master/kubeflow/new-package-stub/prototypes/newpackage.jsonnet) as a template.
+
 ## Testing changes to ksonnet components
 
-The easiest way to test ksonnet components is to follow the normal instructions for setting up a 
+The easiest way to test ksonnet components is to follow the normal instructions for setting up a
 ksonnet app to deploy kubeflow.
 
 Then replace the directory `vendor/kubeflow` with a symbolic link to `${GIT_KUBEFLOW}/kubeflow`
@@ -70,19 +71,26 @@ Then replace the directory `vendor/kubeflow` with a symbolic link to `${GIT_KUBE
 ln -sf ${GIT_KUBEFLOW}/kubeflow  ${APP_DIR}/vendor/kubeflow
 ```
 
-this way changes to your .libsonnet files will automaticaly be reflected in your components.
+this way changes to your .libsonnet files will automatically be reflected in your components.
 
 If you make changes to prototypes you need to regenerate the prototype. You can just delete the `.jsonnet`
-file in your app's component directory and then regenerate the component using `ks generate`. 
-If you use the same name you will preserve the values of any parameters you have set. 
-ksonnet will print a warning but it works; e.g.
+file in your app's component directory and then regenerate the component using `ks generate`.
 
 ```
-rm -rf ${APP_DIR}/components/kubeflow-core.jsonnet 
-ks generate kubeflow-core kubeflow-core
-INFO  Writing component at 'components/kubeflow-core'
-ERROR Component parameters for 'kubeflow-core' already exists
+rm -rf ${APP_DIR}/components/jupyterhub.jsonnet
+ks generate jupyterhub jupyterhub
+INFO  Writing component at 'components/jupyterhub'
+ERROR Component parameters for 'jupyterhub' already exists
 ```
+
+#### ERROR Component parameters for 'jupyterhub' already exists
+If you use the same component name you will preserve the values of any parameters you have set.
+ksonnet will print a warning but it works.
+
+However, the parameters for the component is not changed. So if you added new
+@optionalParam, it will not be set in the `component/params.libsonnet` and you
+will see errors like `RUNTIME ERROR: Field does not exist: NEW_OPTIONAL_PARAM`.
+In this case, use a new component name.
 
 ### New Packages
 

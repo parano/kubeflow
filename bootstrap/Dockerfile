@@ -1,61 +1,113 @@
-# TODO(jlewi): How can we make it work with golang:1.8.2-alpine
-FROM golang:1.8.2 as builder
+#**********************************************************************
+# Builder
+# 
+# Create a go runtime suitable for building and testing kfctl
+ARG GOLANG_VERSION=1.12.7
+FROM golang:$GOLANG_VERSION as builder
 
-RUN mkdir -p /opt/kubeflow
+ARG BRANCH=master
+ARG REPO=https://github.com/kubeflow/kubeflow
+RUN apt-get update
+RUN apt-get install -y git unzip
 
-ENV PATH /go/bin:/usr/local/go/bin:$PATH
-
-RUN mkdir -p $GOPATH/src/github.com/kubeflow/kubeflow/bootstrap
-COPY ./ $GOPATH/src/github.com/kubeflow/kubeflow/bootstrap/
-
-RUN go build -i -o /opt/kubeflow/bootstrapper ${GOPATH}/src/github.com/kubeflow/kubeflow/bootstrap/cmd/bootstrap/main.go
-
-FROM golang:1.8.2
+# junit report is used to conver go test output to junit for reporting
+RUN go get -u github.com/jstemmer/go-junit-report
 
 # We need gcloud to get gke credentials.
-RUN wget -q https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.tar.gz && \
-    tar xzf google-cloud-sdk.tar.gz -C / && \
-    rm google-cloud-sdk.tar.gz && \
-    /google-cloud-sdk/install.sh \
-    --disable-installation-options \
-    --bash-completion=false \
-    --path-update=false \
-    --usage-reporting=false
+RUN \
+    cd /tmp && \
+    wget -nv https://dl.google.com/dl/cloudsdk/release/install_google_cloud_sdk.bash && \
+    chmod +x install_google_cloud_sdk.bash && \
+    ./install_google_cloud_sdk.bash --disable-prompts --install-dir=/opt/
 
-RUN ln -sf /google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud
+ENV PATH /go/bin:/usr/local/go/bin:/opt/google-cloud-sdk/bin:${PATH}
 
-# Install kubectl
-# We don't install via gcloud because we want 1.10 which is newer than what's in gcloud.
-RUN  curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.10.0/bin/linux/amd64/kubectl && \
-    mv kubectl /usr/local/bin && \
-    chmod a+x /usr/local/bin/kubectl
+# use go modules
+ENV GO111MODULE=on
+ENV GOPATH=/go
 
-RUN git clone https://github.com/ksonnet/ksonnet.git /opt/ksonnet && \
-	cd /opt/ksonnet && \
-	git checkout v0.10.0-alpha.3
+# Create bootstrap folder
+RUN mkdir -p ${GOPATH}/src/github.com/kubeflow/kubeflow/bootstrap
+WORKDIR /tmp
+RUN mkdir kubeflow
+RUN echo REPO=${REPO} branch=${BRANCH}
+RUN git clone ${REPO} --depth=1 --branch ${BRANCH} --single-branch kubeflow
+RUN mv /tmp/kubeflow/components ${GOPATH}/src/github.com/kubeflow/kubeflow
+WORKDIR ${GOPATH}/src/github.com/kubeflow/kubeflow/bootstrap
 
-ARG kubeflowversion=v0.1.3
-RUN git clone --depth 1 --branch $kubeflowversion https://github.com/kubeflow/kubeflow.git /opt/kubeflow
+# Download dependencies first to optimize Docker caching.
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+# Copy in the source
+COPY . .
 
-# TODO(jlewi): bootstrap is using an early dev version of ks (0.10) so we need
-# to build ks at the same commit because the generated app won't work with
-# earlier versions of ks.
-RUN cd /opt/ksonnet && \
-	mkdir -p /tmp/go/src/github.com/ksonnet && \
-	ln -sf /opt/ksonnet /tmp/go/src/github.com/ksonnet/ksonnet && \
-    cd /tmp/go/src/github.com/ksonnet/ksonnet && \
-	export GOPATH=/tmp/go && \
-	make install && \
-    cp /tmp/go/bin/ks /usr/local/bin && \
-    chmod a+rx /usr/local/bin/ks
 
-COPY --from=builder /opt/kubeflow/bootstrapper /opt/kubeflow/
-COPY start.sh /opt/kubeflow/
+#**********************************************************************
+# Bootstrap base
+#
+# A container that builds bootstrap. 
+#
+# TODO(https://github.com/kubeflow/kubeflow/issues/2870): We
+# might get rid of the bootstrap binary and instead just have kfctl
+# and allow kfctl to run in a daemon/server mode.
+#
+FROM builder as bootstrap_base
 
+RUN make build-bootstrap
+
+#**********************************************************************
+#
+# kfctl_base
+#
+FROM builder as kfctl_base
+
+RUN make build-kfctl
+
+#**********************************************************************
+#
+# Final image base
+#
+
+FROM golang:$GOLANG_VERSION as barebones_base
+
+RUN mkdir -p /opt/kubeflow
+WORKDIR /opt/kubeflow
+
+#**********************************************************************
+#
+# kfctl
+#
+FROM barebones_base as kfctl
+
+COPY --from=kfctl_base /go/src/github.com/kubeflow/kubeflow/bootstrap/bin/kfctl /usr/local/bin
+
+CMD ["/bin/bash", "-c", "trap : TERM INT; sleep infinity & wait"]
+
+#**********************************************************************
+#
+# bootstrap
+#
+FROM barebones_base as bootstrap
+ARG registries
+
+COPY $registries /opt/registries
+
+COPY --from=bootstrap_base /go/src/github.com/kubeflow/kubeflow/bootstrap/bin/bootstrapper /opt/kubeflow/
+
+COPY config/default.yaml /opt/kubeflow/
+COPY image_registries.yaml /opt/kubeflow/
+
+RUN mkdir -p /opt/bootstrap
+# directory for cert file
+RUN mkdir -p /opt/ca
+RUN mkdir -p /opt/versioned_registries
 RUN chmod a+rx /opt/kubeflow/bootstrapper
-RUN chmod a+rx /opt/kubeflow/start.sh
 
-RUN apt-get update && apt-get install -y vim
+ENV PATH /opt/kubeflow:/opt/bootstrap:${PATH}
+
+
+EXPOSE 8080
 
 # Set default values for USER, USER_ID, GROUP_ID
 # The startup script will create the user and su to that user.
@@ -67,6 +119,3 @@ ENV USER kubeflow
 ENV USER_ID 1000
 ENV GROUP_ID 1000
 ENV GROUP kubeflow
-
-WORKDIR /opt/kubeflow
-CMD ["/opt/kubeflow/start.sh"]

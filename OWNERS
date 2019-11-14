@@ -1,17 +1,9 @@
-# TODO(jlewi): We should probably have OWNERs files in subdirectories that 
-# list approvers for individual components (e.g. Seldon folks for Seldon component)
+# We want to rely on fine grained OWNERs files.
+# Approvers listed here is just a backup in case someone is out.
 approvers:
-  - ankushagarwal
-  - DjangoPeng
-  - gaocegege
+  - abhi-g
   - jlewi
   - kunmingg
   - lluunn
   - pdmack
-  - ScorpioCPH
-  - willb
-reviewers:
-  - Jimexist
-  - kunmingg
-  - wbuchwalter
-  - willingc
+  - richardsliu
